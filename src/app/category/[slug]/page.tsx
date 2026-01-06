@@ -2,103 +2,101 @@ import { prisma } from "@/lib/prisma"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { notFound } from "next/navigation"
 import type { Metadata } from "next"
-
-export const metadata: Metadata = {
-  title: "Readaly - 优质内容分享平台",
-  description: "探索精选文章，发现有价值的内容",
-  openGraph: {
-    title: "Readaly - 优质内容分享平台",
-    description: "探索精选文章，发现有价值的内容",
-    type: "website",
-  },
-}
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export default async function HomePage() {
-  const [posts, categories] = await Promise.all([
-    prisma.post.findMany({
-      where: { published: true },
-      include: {
-        author: {
-          select: {
-            name: true,
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}): Promise<Metadata> {
+  const { slug } = await params
+  const category = await prisma.category.findUnique({
+    where: { slug },
+    select: {
+      name: true,
+      description: true,
+    },
+  })
+
+  if (!category) {
+    return {
+      title: "分类未找到",
+    }
+  }
+
+  return {
+    title: `${category.name} - Readaly`,
+    description: category.description || `浏览 ${category.name} 分类下的所有文章`,
+  }
+}
+
+export default async function CategoryPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}) {
+  const { slug } = await params
+  const category = await prisma.category.findUnique({
+    where: { slug },
+    include: {
+      posts: {
+        where: { published: true },
+        include: {
+          author: {
+            select: {
+              name: true,
+            },
           },
         },
-        category: {
-          select: {
-            name: true,
-            slug: true,
-          },
+        orderBy: {
+          publishedAt: "desc",
         },
       },
-      orderBy: {
-        publishedAt: "desc",
-      },
-      take: 12,
-    }),
-    prisma.category.findMany({
-      include: {
-        _count: {
-          select: { posts: { where: { published: true } } },
-        },
-      },
-      orderBy: {
-        name: "asc",
-      },
-    }),
-  ])
+    },
+  })
+
+  if (!category) {
+    notFound()
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex justify-between items-center">
-            <Link href="/" className="text-3xl font-bold text-gray-900">
-              Readaly
-            </Link>
-            <nav className="flex gap-6">
-              {categories.map((category) => (
-                <Link
-                  key={category.id}
-                  href={`/category/${category.slug}`}
-                  className="text-gray-600 hover:text-gray-900"
-                >
-                  {category.name}
-                </Link>
-              ))}
-            </nav>
-          </div>
+          <Link href="/" className="text-3xl font-bold text-gray-900">
+            Readaly
+          </Link>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-5xl font-bold mb-4">欢迎来到 Readaly</h1>
-          <p className="text-xl text-blue-100 max-w-2xl mx-auto">
-            探索精选文章，发现有价值的内容，与志同道合的人分享知识
-          </p>
+      {/* Category Header */}
+      <section className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">{category.name}</h1>
+          {category.description && (
+            <p className="text-lg text-gray-600">{category.description}</p>
+          )}
+          <p className="text-sm text-gray-500 mt-4">{category.posts.length} 篇文章</p>
         </div>
       </section>
 
       {/* Posts Grid */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-gray-900">最新文章</h2>
-          <p className="text-gray-600 mt-2">浏览我们最新发布的精选内容</p>
-        </div>
-
-        {posts.length === 0 ? (
+        {category.posts.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-500 text-lg">暂无文章发布</p>
+            <p className="text-gray-500 text-lg">该分类下暂无文章</p>
+            <Link href="/" className="text-blue-600 hover:text-blue-800 mt-4 inline-block">
+              返回首页
+            </Link>
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {posts.map((post) => (
+            {category.posts.map((post) => (
               <Link key={post.id} href={`/posts/${post.slug}`}>
                 <Card className="h-full hover:shadow-lg transition-shadow">
                   {post.coverImage && (
@@ -112,9 +110,7 @@ export default async function HomePage() {
                   )}
                   <CardHeader>
                     <div className="flex gap-2 mb-2">
-                      {post.category && (
-                        <Badge variant="secondary">{post.category.name}</Badge>
-                      )}
+                      <Badge variant="secondary">{category.name}</Badge>
                     </div>
                     <CardTitle className="line-clamp-2">{post.title}</CardTitle>
                     <CardDescription className="line-clamp-3">
